@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linux Terminal Workspace Manager</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'Fira Code', 'Courier New', 'monospace'],
+                    },
+                    colors: {
+                        term: {
+                            bg: '#090d16',
+                            surface: '#111827',
+                            border: '#1f2937',
+                            accent: '#38bdf8',
+                            green: '#4ade80',
+                            yellow: '#facc15',
+                            purple: '#c084fc',
+                            pink: '#f472b6',
+                            text: '#e2e8f0',
+                            muted: '#64748b'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'JetBrains Mono', monospace; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #090d16; }
+        ::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #374151; }
+        .glow-text { text-shadow: 0 0 10px rgba(56, 189, 248, 0.4); }
+    </style>
+</head>
+<body class="bg-term-bg text-term-text min-h-screen flex flex-col justify-between selection:bg-term-accent selection:text-term-bg">
+
+    <header class="border-b border-term-border bg-term-surface/90 backdrop-blur sticky top-0 z-50 px-4 py-3">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+                <div class="flex gap-1.5">
+                    <span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span>
+                    <span class="w-3 h-3 rounded-full bg-yellow-500 inline-block"></span>
+                    <span class="w-3 h-3 rounded-full bg-green-500 inline-block"></span>
+                </div>
+                <div class="text-xs sm:text-sm font-bold text-term-accent tracking-wider flex items-center gap-2">
+                    <span>⚡ workspace@<span id="headerWorkspaceName">math</span>:~$</span>
+                </div>
+            </div>
+
+            <!-- Global Search & Action Buttons -->
+            <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+                <div class="relative flex-1 sm:w-52">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-term-muted text-xs">🔍</span>
+                    <input type="text" id="searchInput" placeholder="grep search..." class="w-full bg-term-bg border border-term-border rounded-lg pl-9 pr-3 py-1.5 text-xs text-term-text focus:outline-none focus:border-term-accent transition">
+                </div>
+                
+                <button onclick="triggerImport()" class="bg-term-surface border border-term-border text-term-text hover:border-term-accent px-2.5 py-1.5 rounded-lg text-xs transition flex items-center gap-1" title="Import Workspace JSON">
+                    📂 <span class="hidden sm:inline">Import</span>
+                </button>
+                <input type="file" id="importFile" accept=".json" class="hidden" onchange="handleFileImport(event)">
+
+                <button onclick="exportWorkspaceJSON()" class="bg-term-surface border border-term-border text-term-text hover:border-term-accent px-2.5 py-1.5 rounded-lg text-xs transition flex items-center gap-1" title="Export Current Workspace JSON">
+                    💾 <span class="hidden sm:inline">Export</span>
+                </button>
+
+                <button onclick="openFolderModal()" class="bg-term-surface border border-term-border text-term-accent hover:border-term-accent px-2.5 py-1.5 rounded-lg text-xs transition flex items-center gap-1">
+                    📁 <span class="hidden sm:inline">New Folder</span>
+                </button>
+
+                <button onclick="openItemModal()" class="bg-term-accent text-term-bg font-semibold px-3 py-1.5 rounded-lg text-xs hover:bg-sky-400 transition flex items-center gap-1 whitespace-nowrap">
+                    ➕ <span class="hidden sm:inline">New File</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto w-full p-4 md:p-6 flex-grow grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+        <!-- Left Column: Workspace Switcher & Directory Tree -->
+        <section class="lg:col-span-1 bg-term-surface border border-term-border rounded-xl p-4 flex flex-col shadow-xl space-y-4">
+            <div>
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-term-border">
+                    <span class="text-xs uppercase tracking-widest text-term-muted font-bold">📚 Subjects</span>
+                    <button onclick="openWorkspaceModal()" class="text-xs text-term-accent hover:underline">+ New Subject</button>
+                </div>
+                <div class="flex gap-2">
+                    <select id="workspaceSelector" onchange="switchWorkspace(this.value)" class="w-full bg-term-bg border border-term-border rounded-lg px-3 py-2 text-xs text-term-text font-bold focus:outline-none focus:border-term-accent">
+                        <!-- Populated dynamically -->
+                    </select>
+                    <button onclick="deleteCurrentWorkspace()" class="bg-term-bg border border-red-900/60 text-red-400 hover:bg-red-950/40 px-2.5 py-2 rounded-lg text-xs transition" title="Delete current subject workspace">🗑️</button>
+                </div>
+            </div>
+
+            <!-- Directory Tree Explorer -->
+            <div class="flex flex-col flex-grow">
+                <div class="flex items-center justify-between pb-2 border-b border-term-border mb-3">
+                    <span class="text-xs uppercase tracking-widest text-term-muted font-bold">📂 Directories</span>
+                    <span class="text-xs bg-term-bg text-term-accent px-2 py-0.5 rounded border border-term-border" id="currentPathLabel">/home/math</span>
+                </div>
+                
+                <div class="font-mono text-xs space-y-1.5 overflow-y-auto max-h-[380px]" id="directoryTree">
+                    <!-- Dynamically populated via JS -->
+                </div>
+            </div>
+
+            <div class="pt-3 border-t border-term-border text-xs text-term-muted flex justify-between items-center">
+                <span id="workspaceStats">0 folders, 0 files</span>
+                <button onclick="resetCurrentWorkspace()" class="hover:text-red-400 transition" title="Clear or Reset this subject">🔄 Clear</button>
+            </div>
+        </section>
+
+        <!-- Right Column: Interactive File Dashboard Table -->
+        <section class="lg:col-span-3 bg-term-surface border border-term-border rounded-xl p-4 md:p-6 flex flex-col shadow-xl">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-term-border gap-3 mb-4">
+                <div>
+                    <h1 class="text-base font-bold text-term-green glow-text" id="currentViewTitle">/home/math/all_files</h1>
+                    <p class="text-[11px] text-term-muted mt-0.5" id="currentViewDesc">Index buffer and directory navigation for current subject notebook.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="renameActiveFolder()" id="renameFolderBtn" class="hidden text-xs bg-term-bg border border-term-border px-2.5 py-1 rounded hover:border-term-accent transition">✏️ Rename Folder</button>
+                    <button onclick="deleteActiveFolder()" id="deleteFolderBtn" class="hidden text-xs bg-term-bg border border-red-900 text-red-400 px-2.5 py-1 rounded hover:bg-red-950/50 transition">🗑️ Delete Folder</button>
+                </div>
+            </div>
+
+            <!-- Entries Table -->
+            <div class="overflow-x-auto flex-grow">
+                <table class="w-full text-left text-xs">
+                    <thead>
+                        <tr class="border-b border-term-border text-term-muted uppercase text-[10px]">
+                            <th class="py-2.5 px-3">Folder / Namespace</th>
+                            <th class="py-2.5 px-3">File / Topic Title</th>
+                            <th class="py-2.5 px-3 text-center">Page # (Pencil)</th>
+                            <th class="py-2.5 px-3 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="filesTableBody" class="divide-y divide-term-border/50">
+                        <!-- Dynamically populated -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Empty State Notice -->
+            <div id="emptyState" class="hidden text-center py-20 text-term-muted text-xs">
+                <p>📂 This directory is empty. Click "New File" or add folders to organize your notes.</p>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="max-w-7xl mx-auto w-full p-4 text-center text-[11px] text-term-muted border-t border-term-border">
+        Linux Terminal Workspace Manager &bull; GitHub Pages Ready
+    </footer>
+
+    <!-- Modal Form for Adding / Editing Files -->
+    <div id="itemModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-term-surface border border-term-border rounded-xl max-w-md w-full p-6 shadow-2xl relative">
+            <div class="flex items-center justify-between pb-3 border-b border-term-border mb-4">
+                <h3 class="text-sm font-bold text-term-accent" id="itemModalTitle">📝 New Notebook File Entry</h3>
+                <button onclick="closeItemModal()" class="text-term-muted hover:text-term-text transition">✖</button>
+            </div>
+
+            <form id="itemForm" onsubmit="handleItemFormSubmit(event)" class="space-y-4 text-xs">
+                <input type="hidden" id="editItemId" value="">
+                <div>
+                    <label class="block font-semibold text-term-muted uppercase mb-1">Target Folder</label>
+                    <select id="itemFolder" required class="w-full bg-term-bg border border-term-border rounded-lg px-3 py-2 text-term-text focus:outline-none focus:border-term-accent">
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-semibold text-term-muted uppercase mb-1">File / Topic Title</label>
+                    <input type="text" id="itemName" required placeholder="e.g. Kinematics Equations Set A" class="w-full bg-term-bg border border-term-border rounded-lg px-3 py-2 text-term-text focus:outline-none focus:border-term-accent">
+                </div>
+                <div>
+                    <label class="block font-semibold text-term-muted uppercase mb-1">Notebook Page Number (Pencil Entry)</label>
+                    <input type="number" id="itemPage" required placeholder="e.g. 15" class="w-full bg-term-bg border border-term-border rounded-lg px-3 py-2 text-term-text focus:outline-none focus:border-term-accent">
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeItemModal()" class="px-4 py-2 rounded-lg bg-term-bg border border-term-border hover:bg-term-border/50 transition">Cancel</button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-term-accent text-term-bg font-semibold hover:bg-sky-400 transition">Save to Workspace</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Form for Creating Custom Folders -->
+    <div id="folderModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-term-surface border border-term-border rounded-xl max-w-sm w-full p-6 shadow-2xl relative">
+            <div class="flex items-center justify-between pb-3 border-b border-term-border mb-4">
+                <h3 class="text-sm font-bold text-term-accent" id="folderModalTitle">📁 Create New Folder</h3>
+                <button onclick="closeFolderModal()" class="text-term-muted hover:text-term-text transition">✖</button>
+            </div>
+
+            <form id="folderForm" onsubmit="handleFolderFormSubmit(event)" class="space-y-4 text-xs">
+                <input type="hidden" id="editingOldFolderName" value="">
+                <div>
+                    <label class="block font-semibold text-term-muted uppercase mb-1">Folder Name (slug)</label>
+                    <input type="text" id="newFolderName" required placeholder="e.g. solutions or chapters" class="w-full bg-term-bg border border-term-border rounded-lg px-3 py-2 text-term-text focus:outline-none focus:border-term-accent">
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeFolderModal()" class="px-4 py-2 rounded-lg bg-term-bg border border-term-border hover:bg-term-border/50 transition">Cancel</button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-term-accent text-term-bg font-semibold hover:bg-sky-400 transition">Save Folder</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Form for Creating New Subject Workspaces -->
+    <div id="workspaceModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-term-surface border border-term-border rounded-xl max-w-sm w-full p-6 shadow-2xl relative">
+            <div class="flex items-center justify-between pb-3 border-b border-term-border mb-4">
+                <h3 class="text-sm font-bold text-term-accent">📚 Create New Subject Workspace</h3>
+                <button onclick="closeWorkspaceModal()" class="text-term-muted hover:text-term-text transition">✖</button>
+            </div>
+
+            <form id="workspaceForm" onsubmit="handleWorkspaceFormSubmit(event)" class="space-y-4 text-xs">
+                <div>
+                    <label class="block font-semibold text-term-muted uppercase mb-1">Subject Name (e.g. physics, chemistry, bio)</label>
+                    <input type="text" id="newSubjectName" required placeholder="e.g. physics" class="w-full bg-term-bg border border-term-border rounded-lg px-3 py-2 text-term-text focus:outline-none focus:border-term-accent">
+                </div>
+                <div>
+                    <label class="block font-semibold text-term-muted uppercase mb-1">Initial Folder</label>
+                    <input type="text" id="initialFolder" value="chapters" required class="w-full bg-term-bg border border-term-border rounded-lg px-3 py-2 text-term-text focus:outline-none focus:border-term-accent">
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeWorkspaceModal()" class="px-4 py-2 rounded-lg bg-term-bg border border-term-border hover:bg-term-border/50 transition">Cancel</button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-term-accent text-term-bg font-semibold hover:bg-sky-400 transition">Create Workspace</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Toast Message Box -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-term-surface border border-term-green text-term-green px-4 py-2.5 rounded-lg shadow-xl text-xs flex items-center gap-2 transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+        <span>✅</span> <span id="toastMsg">Operation successful</span>
+    </div>
+
+    <script>
+        const defaultAllWorkspaces = {
+            math: {
+                folders: ['chapters'],
+                items: []
+            }
+        };
+
+        let allWorkspaces = JSON.parse(localStorage.getItem('multi_subject_notebooks')) || defaultAllWorkspaces;
+        let activeSubject = Object.keys(allWorkspaces)[0] || 'math';
+        let activeFolderFilter = 'ALL';
+        let searchQuery = '';
+
+        function persistAll() {
+            localStorage.setItem('multi_subject_notebooks', JSON.stringify(allWorkspaces));
+        }
+
+        function getCurrentWorkspace() {
+            if (!allWorkspaces[activeSubject]) {
+                allWorkspaces[activeSubject] = { folders: ['chapters'], items: [] };
+            }
+            return allWorkspaces[activeSubject];
+        }
+
+        function render() {
+            renderSubjectSelector();
+            renderTree();
+            renderTable();
+            updateFolderSelectOptions();
+            
+            const ws = getCurrentWorkspace();
+            document.getElementById('headerWorkspaceName').innerText = activeSubject;
+            document.getElementById('currentPathLabel').innerText = `/home/${activeSubject}`;
+            document.getElementById('workspaceStats').innerText = `${ws.folders.length} folders, ${ws.items.length} files`;
+        }
+
+        function renderSubjectSelector() {
+            const selector = document.getElementById('workspaceSelector');
+            selector.innerHTML = '';
+            Object.keys(allWorkspaces).forEach(subj => {
+                const opt = document.createElement('option');
+                opt.value = subj;
+                opt.innerText = subj.toUpperCase();
+                if (subj === activeSubject) opt.selected = true;
+                selector.appendChild(opt);
+            });
+        }
+
+        function switchWorkspace(subj) {
+            activeSubject = subj;
+            activeFolderFilter = 'ALL';
+            searchQuery = '';
+            document.getElementById('searchInput').value = '';
+            render();
+        }
+
+        function renderTree() {
+            const treeContainer = document.getElementById('directoryTree');
+            const ws = getCurrentWorkspace();
+            
+            let html = `
+                <div class="flex items-center justify-between py-1 px-2 rounded cursor-pointer transition ${activeFolderFilter === 'ALL' ? 'bg-term-border text-term-accent font-semibold' : 'hover:bg-term-surface/80 text-term-muted'}" onclick="filterFolder('ALL')">
+                    <span>📂 /home/${activeSubject}/ (All)</span>
+                    <span class="bg-term-bg px-1.5 py-0.5 rounded text-[10px] border border-term-border">${ws.items.length}</span>
+                </div>
+                <div class="pl-3 space-y-1 border-l border-term-border/60 ml-2 mt-1.5">
+            `;
+
+            ws.folders.forEach(folder => {
+                const count = ws.items.filter(i => i.folder === folder).length;
+                const isSelected = activeFolderFilter === folder;
+                html += `
+                    <div class="flex items-center justify-between py-1 px-2 rounded cursor-pointer transition ${isSelected ? 'bg-term-border text-term-accent font-semibold' : 'hover:bg-term-surface/80 text-term-muted'}" onclick="filterFolder('${folder}')">
+                        <span>📁 /${folder}/</span>
+                        <span class="bg-term-bg px-1.5 py-0.5 rounded text-[10px] border border-term-border">${count}</span>
+                    </div>
+                `;
+            });
+
+            html += `</div>`;
+            treeContainer.innerHTML = html;
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('filesTableBody');
+            const emptyState = document.getElementById('emptyState');
+            const renameBtn = document.getElementById('renameFolderBtn');
+            const deleteBtn = document.getElementById('deleteFolderBtn');
+            const ws = getCurrentWorkspace();
+
+            if (activeFolderFilter === 'ALL') {
+                document.getElementById('currentViewTitle').innerText = `/home/${activeSubject}/all_files`;
+                document.getElementById('currentViewDesc').innerText = `Full index buffer for ${activeSubject.toUpperCase()} notebook.`;
+                renameBtn.classList.add('hidden');
+                deleteBtn.classList.add('hidden');
+            } else {
+                document.getElementById('currentViewTitle').innerText = `/home/${activeSubject}/${activeFolderFilter}/`;
+                document.getElementById('currentViewDesc').innerText = `Filtered directory view for /${activeFolderFilter}/.`;
+                renameBtn.classList.remove('hidden');
+                deleteBtn.classList.remove('hidden');
+            }
+
+            let filtered = ws.items.filter(item => {
+                const matchesFolder = activeFolderFilter === 'ALL' || item.folder === activeFolderFilter;
+                const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                      item.folder.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                      String(item.page).includes(searchQuery);
+                return matchesFolder && matchesSearch;
+            });
+
+            filtered.sort((a, b) => a.page - b.page);
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            let html = '';
+
+            const folderColors = ['text-sky-400 bg-sky-950/40 border-sky-800', 'text-green-400 bg-green-950/40 border-green-800', 'text-yellow-400 bg-yellow-950/40 border-yellow-800', 'text-purple-400 bg-purple-950/40 border-purple-800', 'text-pink-400 bg-pink-950/40 border-pink-800'];
+
+            filtered.forEach(item => {
+                const colorIdx = Math.abs(hashCode(item.folder)) % folderColors.length;
+                const badgeColor = folderColors[colorIdx];
+
+                html += `
+                    <tr class="hover:bg-term-border/30 transition">
+                        <td class="py-2.5 px-3">
+                            <span class="text-[10px] uppercase px-2 py-0.5 rounded border ${badgeColor}">/${item.folder}/</span>
+                        </td>
+                        <td class="py-2.5 px-3 font-medium text-term-text">
+                            📄 ${item.name}
+                        </td>
+                        <td class="py-2.5 px-3 text-center">
+                            <span class="inline-flex items-center gap-1 bg-term-bg px-2 py-0.5 rounded border border-term-border font-bold text-term-accent" title="Editable in pencil">
+                                ✏️ p.${item.page}
+                            </span>
+                        </td>
+                        <td class="py-2.5 px-3 text-right">
+                            <button onclick="editItem(${item.id})" class="text-term-muted hover:text-term-accent p-1 transition" title="Edit File">✏️</button>
+                            <button onclick="deleteItem(${item.id})" class="text-term-muted hover:text-red-400 p-1 transition ml-1" title="Delete File">🗑️</button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        function hashCode(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            return hash;
+        }
+
+        function filterFolder(folder) {
+            activeFolderFilter = folder;
+            render();
+        }
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            searchQuery = e.target.value.trim();
+            renderTable();
+        });
+
+        function updateFolderSelectOptions() {
+            const select = document.getElementById('itemFolder');
+            select.innerHTML = '';
+            const ws = getCurrentWorkspace();
+            ws.folders.forEach(folder => {
+                const opt = document.createElement('option');
+                opt.value = folder;
+                opt.innerText = `/${folder}/`;
+                select.appendChild(opt);
+            });
+        }
+
+        // File Item Modal Controls
+        function openItemModal(editId = null) {
+            const ws = getCurrentWorkspace();
+            if (ws.folders.length === 0) {
+                showToast('Please create at least one folder first.');
+                openFolderModal();
+                return;
+            }
+
+            const modal = document.getElementById('itemModal');
+            document.getElementById('itemForm').reset();
+            document.getElementById('editItemId').value = '';
+            document.getElementById('itemModalTitle').innerText = '📝 New Notebook File Entry';
+
+            if (activeFolderFilter !== 'ALL') {
+                document.getElementById('itemFolder').value = activeFolderFilter;
+            }
+
+            if (editId) {
+                const item = ws.items.find(i => i.id === editId);
+                if (item) {
+                    document.getElementById('editItemId').value = item.id;
+                    document.getElementById('itemFolder').value = item.folder;
+                    document.getElementById('itemName').value = item.name;
+                    document.getElementById('itemPage').value = item.page;
+                    document.getElementById('itemModalTitle').innerText = '✏️ Edit File Entry';
+                }
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function closeItemModal() {
+            document.getElementById('itemModal').classList.add('hidden');
+        }
+
+        function handleItemFormSubmit(e) {
+            e.preventDefault();
+            const ws = getCurrentWorkspace();
+            const editId = document.getElementById('editItemId').value;
+            const folder = document.getElementById('itemFolder').value;
+            const name = document.getElementById('itemName').value.trim();
+            const page = parseInt(document.getElementById('itemPage').value);
+
+            if (!name || isNaN(page)) return;
+
+            if (editId) {
+                const index = ws.items.findIndex(i => i.id == editId);
+                if (index !== -1) {
+                    ws.items[index] = { id: Number(editId), folder, name, page };
+                    showToast('File entry successfully updated.');
+                }
+            } else {
+                const newId = ws.items.length > 0 ? Math.max(...ws.items.map(i => i.id)) + 1 : 1;
+                ws.items.push({ id: newId, folder, name, page });
+                showToast('New file successfully added.');
+            }
+
+            persistAll();
+            closeItemModal();
+            render();
+        }
+
+        function editItem(id) {
+            openItemModal(id);
+        }
+
+        function deleteItem(id) {
+            const ws = getCurrentWorkspace();
+            if (confirm('Are you sure you want to delete this file entry?')) {
+                ws.items = ws.items.filter(i => i.id !== id);
+                persistAll();
+                render();
+                showToast('File entry deleted.');
+            }
+        }
+
+        // Folder Modal Controls
+        function openFolderModal(renameOldName = null) {
+            const modal = document.getElementById('folderModal');
+            document.getElementById('folderForm').reset();
+            document.getElementById('editingOldFolderName').value = '';
+            document.getElementById('folderModalTitle').innerText = '📁 Create New Folder';
+
+            if (renameOldName) {
+                document.getElementById('editingOldFolderName').value = renameOldName;
+                document.getElementById('newFolderName').value = renameOldName;
+                document.getElementById('folderModalTitle').innerText = '✏️ Rename Folder';
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function closeFolderModal() {
+            document.getElementById('folderModal').classList.add('hidden');
+        }
+
+        function handleFolderFormSubmit(e) {
+            e.preventDefault();
+            const ws = getCurrentWorkspace();
+            const oldName = document.getElementById('editingOldFolderName').value;
+            const newName = document.getElementById('newFolderName').value.trim().toLowerCase().replace(/\s+/g, '_');
+
+            if (!newName) return;
+
+            if (oldName) {
+                if (ws.folders.includes(newName) && oldName !== newName) {
+                    showToast('Folder name already exists.');
+                    return;
+                }
+                ws.folders = ws.folders.map(f => f === oldName ? newName : f);
+                ws.items.forEach(i => {
+                    if (i.folder === oldName) i.folder = newName;
+                });
+                if (activeFolderFilter === oldName) activeFolderFilter = newName;
+                showToast(`Folder renamed to /${newName}/`);
+            } else {
+                if (ws.folders.includes(newName)) {
+                    showToast('Folder already exists.');
+                    return;
+                }
+                ws.folders.push(newName);
+                showToast(`Folder /${newName}/ created.`);
+            }
+
+            persistAll();
+            closeFolderModal();
+            render();
+        }
+
+        function renameActiveFolder() {
+            if (activeFolderFilter === 'ALL') return;
+            openFolderModal(activeFolderFilter);
+        }
+
+        function deleteActiveFolder() {
+            if (activeFolderFilter === 'ALL') return;
+            const ws = getCurrentWorkspace();
+            const folderToDelete = activeFolderFilter;
+            
+            if (confirm(`Delete folder /${folderToDelete}/ and all its files?`)) {
+                ws.folders = ws.folders.filter(f => f !== folderToDelete);
+                ws.items = ws.items.filter(i => i.folder !== folderToDelete);
+                activeFolderFilter = 'ALL';
+                persistAll();
+                render();
+                showToast(`Folder /${folderToDelete}/ deleted.`);
+            }
+        }
+
+        // Subject Workspace Modal Controls
+        function openWorkspaceModal() {
+            document.getElementById('workspaceForm').reset();
+            document.getElementById('workspaceModal').classList.remove('hidden');
+        }
+
+        function closeWorkspaceModal() {
+            document.getElementById('workspaceModal').classList.add('hidden');
+        }
+
+        function handleWorkspaceFormSubmit(e) {
+            e.preventDefault();
+            const subjName = document.getElementById('newSubjectName').value.trim().toLowerCase().replace(/\s+/g, '_');
+            const initFolder = document.getElementById('initialFolder').value.trim().toLowerCase().replace(/\s+/g, '_') || 'chapters';
+
+            if (!subjName) return;
+
+            if (allWorkspaces[subjName]) {
+                showToast('Subject workspace already exists.');
+                return;
+            }
+
+            allWorkspaces[subjName] = {
+                folders: [initFolder],
+                items: []
+            };
+
+            activeSubject = subjName;
+            activeFolderFilter = 'ALL';
+            persistAll();
+            closeWorkspaceModal();
+            render();
+            showToast(`Subject workspace /${subjName}/ created.`);
+        }
+
+        function deleteCurrentWorkspace() {
+            const keys = Object.keys(allWorkspaces);
+            if (keys.length <= 1) {
+                showToast('Cannot delete the last remaining workspace.');
+                return;
+            }
+
+            if (confirm(`Delete the entire "${activeSubject}" workspace?`)) {
+                delete allWorkspaces[activeSubject];
+                activeSubject = Object.keys(allWorkspaces)[0];
+                activeFolderFilter = 'ALL';
+                persistAll();
+                render();
+                showToast('Workspace deleted.');
+            }
+        }
+
+        function resetCurrentWorkspace() {
+            const ws = getCurrentWorkspace();
+            if (confirm(`Clear all files and folders in "${activeSubject}"?`)) {
+                ws.folders = ['chapters'];
+                ws.items = [];
+                activeFolderFilter = 'ALL';
+                persistAll();
+                render();
+                showToast(`Workspace "${activeSubject}" cleared.`);
+            }
+        }
+
+        // Robust JSON Export for all browsers and devices
+        function exportWorkspaceJSON() {
+            const exportData = {
+                subject: activeSubject,
+                workspaceData: getCurrentWorkspace(),
+                allWorkspacesBackup: allWorkspaces
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `${activeSubject}_notebook_workspace.json`);
+            downloadAnchor.style.display = 'none';
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            
+            setTimeout(() => {
+                document.body.removeChild(downloadAnchor);
+            }, 100);
+
+            showToast(`Workspace "${activeSubject}" exported successfully!`);
+        }
+
+        // JSON Import
+        function triggerImport() {
+            document.getElementById('importFile').click();
+        }
+
+        function handleFileImport(event) {
+            const fileReader = new FileReader();
+            if (event.target.files[0]) {
+                fileReader.readAsText(event.target.files[0], "UTF-8");
+                fileReader.onload = (e) => {
+                    try {
+                        const parsed = JSON.parse(e.target.result);
+                        if (parsed && parsed.allWorkspacesBackup) {
+                            allWorkspaces = parsed.allWorkspacesBackup;
+                            if (parsed.subject && allWorkspaces[parsed.subject]) {
+                                activeSubject = parsed.subject;
+                            } else {
+                                activeSubject = Object.keys(allWorkspaces)[0];
+                            }
+                        } else if (parsed && Array.isArray(parsed.folders) && Array.isArray(parsed.items)) {
+                            allWorkspaces['imported_subject'] = parsed;
+                            activeSubject = 'imported_subject';
+                        } else {
+                            showToast('Invalid JSON workspace format.');
+                            return;
+                        }
+                        activeFolderFilter = 'ALL';
+                        persistAll();
+                        render();
+                        showToast('Workspace successfully imported!');
+                    } catch (err) {
+                        showToast('Error parsing JSON backup file.');
+                    }
+                    event.target.value = '';
+                };
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMsg').innerText = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        window.onload = () => {
+            render();
+        };
+    </script>
+</body>
+</html>
